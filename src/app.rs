@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::env;
+use std::path::Path;
+use std::str::FromStr;
 
 use atty::{self, Stream};
 
@@ -15,7 +17,7 @@ use errors::*;
 use line_range::LineRange;
 use style::{OutputComponent, OutputComponents, OutputWrap};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PagingMode {
     Always,
     QuitIfOneScreen,
@@ -39,6 +41,10 @@ pub struct Config<'a> {
 
     /// The character width of the terminal
     pub term_width: usize,
+
+    /// The width of tab characters.
+    /// Currently, a value of 0 will cause tabs to be passed through without expanding them.
+    pub tab_width: usize,
 
     /// Whether or not to simply loop through all input (`cat` mode)
     pub loop_through: bool,
@@ -102,6 +108,10 @@ impl App {
             AppSettings::ColorNever
         };
 
+        // Check if the current directory contains a file name cache, if it does
+        // do not make the arguements for subcommand 'cache' required.
+        let arg_group_required = !Path::new("cache").exists();
+
         ClapApp::new(crate_name!())
             .version(crate_version!())
             .global_setting(clap_color_setting)
@@ -125,7 +135,7 @@ impl App {
                          to read from standard input.",
                     ).multiple(true)
                     .empty_values(false),
-                    )
+            )
             .arg(
                 Arg::with_name("language")
                     .short("l")
@@ -139,205 +149,241 @@ impl App {
                         language names and file extensions."
                     ).takes_value(true),
             ).arg(
-                Arg::with_name("list-languages")
-                    .long("list-languages")
-                    .conflicts_with("list-themes")
-                    .help("Display all supported languages.")
-                    .long_help("Display a list of supported languages for syntax highlighting."),
-            ).arg(
-                Arg::with_name("theme")
-                    .long("theme")
-                    .overrides_with("theme")
-                    .takes_value(true)
-                    .help("Set the color theme for syntax highlighting.")
-                    .long_help(
-                        "Set the theme for syntax highlighting. Use '--list-themes' to \
+            Arg::with_name("list-languages")
+                .long("list-languages")
+                .conflicts_with("list-themes")
+                .help("Display all supported languages.")
+                .long_help("Display a list of supported languages for syntax highlighting."),
+        ).arg(
+            Arg::with_name("theme")
+                .long("theme")
+                .overrides_with("theme")
+                .takes_value(true)
+                .help("Set the color theme for syntax highlighting.")
+                .long_help(
+                    "Set the theme for syntax highlighting. Use '--list-themes' to \
                          see all available themes. To set a default theme, export the \
                          BAT_THEME environment variable (e.g.: export \
                          BAT_THEME=\"TwoDark\").",
-                    ),
-            ).arg(
-                Arg::with_name("list-themes")
-                    .long("list-themes")
-                    .help("Display all supported highlighting themes.")
-                    .long_help("Display a list of supported themes for syntax highlighting."),
-            ).arg(
-                Arg::with_name("style")
-                    .long("style")
-                    .value_name("style-components")
-                    .use_delimiter(true)
-                    .takes_value(true)
-                    .possible_values(&[
-                        "auto", "full", "plain", "changes", "header", "grid", "numbers",
-                    ]).default_value("auto")
-                    .help("Comma-separated list of style elements to display.")
-                    .long_help(
-                        "Configure which elements (line numbers, file headers, grid \
+                ),
+        ).arg(
+            Arg::with_name("list-themes")
+                .long("list-themes")
+                .help("Display all supported highlighting themes.")
+                .long_help("Display a list of supported themes for syntax highlighting."),
+        ).arg(
+            Arg::with_name("style")
+                .long("style")
+                .value_name("style-components")
+                .use_delimiter(true)
+                .takes_value(true)
+                .possible_values(&[
+                    "auto", "full", "plain", "changes", "header", "grid", "numbers",
+                ])
+                .help("Comma-separated list of style elements to display.")
+                .long_help(
+                    "Configure which elements (line numbers, file headers, grid \
                          borders, Git modifications, ..) to display in addition to the \
                          file contents. The argument is a comma-separated list of \
                          components to display (e.g. 'numbers,changes,grid') or a \
-                         pre-defined style ('full')",
-                    ),
-            ).arg(
-                Arg::with_name("plain")
-                    .overrides_with("plain")
-                    .short("p")
-                    .long("plain")
-                    .conflicts_with("style")
-                    .conflicts_with("number")
-                    .help("Show plain style (alias for '--style=plain').")
-                    .long_help(
-                        "Only show plain style, no decorations. This is an alias for \
+                         pre-defined style ('full'). To set a default theme, export the \
+                         BAT_STYLE environment variable (e.g.: export BAT_STYLE=\"numbers\").",
+                ),
+        ).arg(
+            Arg::with_name("plain")
+                .overrides_with("plain")
+                .short("p")
+                .long("plain")
+                .conflicts_with("style")
+                .conflicts_with("number")
+                .help("Show plain style (alias for '--style=plain').")
+                .long_help(
+                    "Only show plain style, no decorations. This is an alias for \
                          '--style=plain'",
-                    ),
-            ).arg(
-                Arg::with_name("number")
-                    .long("number")
-                    .overrides_with("number")
-                    .short("n")
-                    .conflicts_with("style")
-                    .help("Show line numbers (alias for '--style=numbers').")
-                    .long_help(
-                        "Only show line numbers, no other decorations. This is an alias for \
+                ),
+        ).arg(
+            Arg::with_name("number")
+                .long("number")
+                .overrides_with("number")
+                .short("n")
+                .conflicts_with("style")
+                .help("Show line numbers (alias for '--style=numbers').")
+                .long_help(
+                    "Only show line numbers, no other decorations. This is an alias for \
                          '--style=numbers'",
-                    ),
-            ).arg(
-                Arg::with_name("line-range")
-                    .long("line-range")
-                    .overrides_with("line-range")
-                    .takes_value(true)
-                    .value_name("N:M")
-                    .help("Only print the lines from N to M.")
-                    .long_help(
-                        "Only print the specified range of lines for each file. \
+                ),
+        ).arg(
+            Arg::with_name("line-range")
+                .long("line-range")
+                .overrides_with("line-range")
+                .takes_value(true)
+                .value_name("N:M")
+                .help("Only print the lines from N to M.")
+                .long_help(
+                    "Only print the specified range of lines for each file. \
                          For example:\n  \
                          '--line-range 30:40' prints lines 30 to 40\n  \
                          '--line-range :40' prints lines 1 to 40\n  \
                          '--line-range 40:' prints lines 40 to the end of the file",
-                    ),
-            ).arg(
-                Arg::with_name("color")
-                    .long("color")
-                    .overrides_with("color")
-                    .takes_value(true)
-                    .value_name("when")
-                    .possible_values(&["auto", "never", "always"])
-                    .default_value("auto")
-                    .help("When to use colors.")
-                    .long_help("Specify when to use colored output. The automatic mode \
+                ),
+        ).arg(
+            Arg::with_name("color")
+                .long("color")
+                .overrides_with("color")
+                .takes_value(true)
+                .value_name("when")
+                .possible_values(&["auto", "never", "always"])
+                .default_value("auto")
+                .help("When to use colors.")
+                .long_help("Specify when to use colored output. The automatic mode \
                                 only enables colors if an interactive terminal is detected."),
-            ).arg(
-                Arg::with_name("decorations")
-                    .long("decorations")
-                    .overrides_with("decorations")
-                    .takes_value(true)
-                    .value_name("when")
-                    .possible_values(&["auto", "never", "always"])
-                    .default_value("auto")
-                    .help("When to show the decorations specified by '--style'.")
-                    .long_help("Specify when to use the decorations that have been specified \
+        ).arg(
+            Arg::with_name("decorations")
+                .long("decorations")
+                .overrides_with("decorations")
+                .takes_value(true)
+                .value_name("when")
+                .possible_values(&["auto", "never", "always"])
+                .default_value("auto")
+                .help("When to show the decorations specified by '--style'.")
+                .long_help("Specify when to use the decorations that have been specified \
                                 via '--style'. The automatic mode only enables decorations if \
                                 an interactive terminal is detected."),
-            ).arg(
-                Arg::with_name("paging")
-                    .long("paging")
-                    .overrides_with("paging")
-                    .takes_value(true)
-                    .value_name("when")
-                    .possible_values(&["auto", "never", "always"])
-                    .default_value("auto")
-                    .help("Specify when to use the pager.")
-                    .long_help("Specify when to use the pager. To control which pager \
+        ).arg(
+            Arg::with_name("paging")
+                .long("paging")
+                .overrides_with("paging")
+                .takes_value(true)
+                .value_name("when")
+                .possible_values(&["auto", "never", "always"])
+                .default_value("auto")
+                .help("Specify when to use the pager.")
+                .long_help("Specify when to use the pager. To control which pager \
                                 is used, set the PAGER or BAT_PAGER environment \
                                 variables (the latter takes precedence). The default \
                                 pager is 'less'. To disable the pager permanently, set \
                                 BAT_PAGER to an empty string."),
-            ).arg(
-                Arg::with_name("wrap")
-                    .long("wrap")
-                    .overrides_with("wrap")
-                    .takes_value(true)
-                    .value_name("mode")
-                    .possible_values(&["character", "never"])
-                    .default_value("character")
-                    .help("Specify the text-wrapping mode.")
-                    .long_help("Specify the text-wrapping mode."),
-            ).arg(
-                Arg::with_name("unbuffered")
-                    .short("u")
-                    .hidden_short_help(true)
-                    .long_help(
-                        "This option exists for POSIX-compliance reasons ('u' is for \
+        ).arg(
+            Arg::with_name("wrap")
+                .long("wrap")
+                .overrides_with("wrap")
+                .takes_value(true)
+                .value_name("mode")
+                .possible_values(&["auto", "never", "character"])
+                .default_value("auto")
+                .help("Specify the text-wrapping mode.")
+                .long_help("Specify the text-wrapping mode."),
+        ).arg(
+            Arg::with_name("unbuffered")
+                .short("u")
+                .hidden_short_help(true)
+                .long_help(
+                    "This option exists for POSIX-compliance reasons ('u' is for \
                          'unbuffered'). The output is always unbuffered - this option \
                          is simply ignored.",
+                ),
+        ).arg(
+            Arg::with_name("tabs")
+                .long("tabs")
+                .takes_value(true)
+                .value_name("tabs")
+                .validator(
+                    |t| t.parse::<u32>()
+                        .map_err(|_t| "must be a number")
+                        .map(|_t| ()) // Convert to Result<(), &str>
+                        .map_err(|e| e.to_string()) // Convert to Result<(), String>
+                )
+                .help("Sets the tab width.")
+                .long_help("Sets the tab width. Use a width of 0 to pass tabs through \
+                        directly"),
+        ).arg(
+            Arg::with_name("terminal-width")
+                .long("terminal-width")
+                .takes_value(true)
+                .value_name("width")
+                .hidden(true)
+                .help("Set the width of the terminal"),
+        ).subcommand(
+            SubCommand::with_name("cache")
+                .about("Modify the syntax-definition and theme cache")
+                .arg(
+                    Arg::with_name("init")
+                        .long("init")
+                        .short("i")
+                        .help("Initialize the syntax/theme cache.")
+                        .long_help(
+                            "Initialize the syntax/theme cache by loading from the \
+                                 source directory (default: the configuration directory).",
+                        ),
+                ).arg(
+                Arg::with_name("clear")
+                    .long("clear")
+                    .short("c")
+                    .help("Remove the cached syntax definitions and themes."),
+            ).arg(
+                Arg::with_name("config-dir")
+                    .long("config-dir")
+                    .short("d")
+                    .help("Show bat's configuration directory."),
+            ).group(
+                ArgGroup::with_name("cache-actions")
+                    .args(&["init", "clear", "config-dir"])
+                    .required(arg_group_required),
+            ).arg(
+                Arg::with_name("source")
+                    .long("source")
+                    .requires("init")
+                    .takes_value(true)
+                    .value_name("dir")
+                    .help("Use a different directory to load syntaxes and themes from."),
+            ).arg(
+                Arg::with_name("target")
+                    .long("target")
+                    .requires("init")
+                    .takes_value(true)
+                    .value_name("dir")
+                    .help(
+                        "Use a different directory to store the cached syntax and theme set.",
                     ),
             ).arg(
-                Arg::with_name("terminal-width")
-                    .long("terminal-width")
-                    .takes_value(true)
-                    .value_name("width")
-                    .hidden(true)
-                    .help("Set the width of the terminal"),
-            ).subcommand(
-                SubCommand::with_name("cache")
-                    .about("Modify the syntax-definition and theme cache")
-                    .arg(
-                        Arg::with_name("init")
-                            .long("init")
-                            .short("i")
-                            .help("Initialize the syntax/theme cache.")
-                            .long_help(
-                                "Initialize the syntax/theme cache by loading from the \
-                                 source directory (default: the configuration directory).",
-                            ),
-                    ).arg(
-                        Arg::with_name("clear")
-                            .long("clear")
-                            .short("c")
-                            .help("Remove the cached syntax definitions and themes."),
-                    ).arg(
-                        Arg::with_name("config-dir")
-                            .long("config-dir")
-                            .short("d")
-                            .help("Show bat's configuration directory."),
-                    ).group(
-                        ArgGroup::with_name("cache-actions")
-                            .args(&["init", "clear", "config-dir"])
-                            .required(true),
-                    ).arg(
-                        Arg::with_name("source")
-                            .long("source")
-                            .requires("init")
-                            .takes_value(true)
-                            .value_name("dir")
-                            .help("Use a different directory to load syntaxes and themes from."),
-                    ).arg(
-                        Arg::with_name("target")
-                            .long("target")
-                            .requires("init")
-                            .takes_value(true)
-                            .value_name("dir")
-                            .help(
-                                "Use a different directory to store the cached syntax and theme set.",
-                            ),
-                    ).arg(
-                        Arg::with_name("blank")
-                            .long("blank")
-                            .requires("init")
-                            .help("Create completely new syntax and theme sets \
+                Arg::with_name("blank")
+                    .long("blank")
+                    .requires("init")
+                    .help("Create completely new syntax and theme sets \
                                    (instead of appending to the default sets).")
-                    ),
-            ).help_message("Print this help message.")
+            ),
+        ).help_message("Print this help message.")
             .version_message("Show version information.")
             .get_matches()
     }
 
     pub fn config(&self) -> Result<Config> {
         let files = self.files();
+        let output_components = self.output_components()?;
+
+        let paging_mode = match self.matches.value_of("paging") {
+            Some("always") => PagingMode::Always,
+            Some("never") => PagingMode::Never,
+            Some("auto") | _ => if files.contains(&InputFile::StdIn) {
+                // If we are reading from stdin, only enable paging if we write to an
+                // interactive terminal and if we do not *read* from an interactive
+                // terminal.
+                if self.interactive_output && !atty::is(Stream::Stdin) {
+                    PagingMode::QuitIfOneScreen
+                } else {
+                    PagingMode::Never
+                }
+            } else {
+                if self.interactive_output {
+                    PagingMode::QuitIfOneScreen
+                } else {
+                    PagingMode::Never
+                }
+            },
+        };
 
         Ok(Config {
             true_color: is_truecolor_terminal(),
-            output_components: self.output_components()?,
             language: self.matches.value_of("language"),
             output_wrap: if !self.interactive_output {
                 // We don't have the tty width when piping to another program.
@@ -346,7 +392,12 @@ impl App {
             } else {
                 match self.matches.value_of("wrap") {
                     Some("character") => OutputWrap::Character,
-                    Some("never") | _ => OutputWrap::None,
+                    Some("never") => OutputWrap::None,
+                    Some("auto") | _ => if output_components.plain() {
+                        OutputWrap::None
+                    } else {
+                        OutputWrap::Character
+                    },
                 }
             },
             colored_output: match self.matches.value_of("color") {
@@ -354,26 +405,7 @@ impl App {
                 Some("never") => false,
                 Some("auto") | _ => self.interactive_output,
             },
-            paging_mode: match self.matches.value_of("paging") {
-                Some("always") => PagingMode::Always,
-                Some("never") => PagingMode::Never,
-                Some("auto") | _ => if files.contains(&InputFile::StdIn) {
-                    // If we are reading from stdin, only enable paging if we write to an
-                    // interactive terminal and if we do not *read* from an interactive
-                    // terminal.
-                    if self.interactive_output && !atty::is(Stream::Stdin) {
-                        PagingMode::QuitIfOneScreen
-                    } else {
-                        PagingMode::Never
-                    }
-                } else {
-                    if self.interactive_output {
-                        PagingMode::QuitIfOneScreen
-                    } else {
-                        PagingMode::Never
-                    }
-                },
-            },
+            paging_mode,
             term_width: self
                 .matches
                 .value_of("terminal-width")
@@ -383,6 +415,19 @@ impl App {
                 || self.matches.value_of("color") == Some("always")
                 || self.matches.value_of("decorations") == Some("always")),
             files,
+            tab_width: self
+                .matches
+                .value_of("tabs")
+                .map(String::from)
+                .or_else(|| env::var("BAT_TABS").ok())
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(
+                    if output_components.plain() && paging_mode == PagingMode::Never {
+                        0
+                    } else {
+                        8
+                    },
+                ),
             theme: self
                 .matches
                 .value_of("theme")
@@ -390,6 +435,7 @@ impl App {
                 .or_else(|| env::var("BAT_THEME").ok())
                 .unwrap_or(String::from(BAT_THEME_DEFAULT)),
             line_range: transpose(self.matches.value_of("line-range").map(LineRange::from))?,
+            output_components,
         })
     }
 
@@ -418,7 +464,18 @@ impl App {
             } else if matches.is_present("plain") {
                 [OutputComponent::Plain].iter().cloned().collect()
             } else {
-                values_t!(matches.values_of("style"), OutputComponent)?
+                let env_style_components: Option<Vec<OutputComponent>> =
+                    transpose(env::var("BAT_STYLE").ok().map(|style_str| {
+                        style_str
+                            .split(",")
+                            .map(|x| OutputComponent::from_str(&x))
+                            .collect::<Result<Vec<OutputComponent>>>()
+                    }))?;
+
+                values_t!(matches.values_of("style"), OutputComponent)
+                    .ok()
+                    .or(env_style_components)
+                    .unwrap_or(vec![OutputComponent::Full])
                     .into_iter()
                     .map(|style| style.components(self.interactive_output))
                     .fold(HashSet::new(), |mut acc, components| {

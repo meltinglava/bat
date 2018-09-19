@@ -67,3 +67,27 @@
 [submodule "assets/themes/onehalf"]
 	path = assets/themes/onehalf
 	url = https://github.com/sonph/onehalf
+[submodule "assets/syntaxes/JavaScript (Babel)"]
+	path = assets/syntaxes/JavaScript (Babel)
+	url = https://github.com/babel/babel-sublime
+[submodule "assets/syntaxes/Cabal"]
+	path = assets/syntaxes/Cabal
+	url = https://github.com/SublimeHaskell/SublimeHaskell
+[submodule "assets/syntaxes/Dart"]
+	path = assets/syntaxes/Dart
+	url = https://github.com/guillermooo/dart-sublime-bundle
+[submodule "assets/syntaxes/FSharp"]
+	path = assets/syntaxes/FSharp
+	url = https://github.com/hoest/sublimetext-fsharp
+[submodule "assets/syntaxes/PureScript"]
+	path = assets/syntaxes/PureScript
+	url = https://github.com/tellnobody1/sublime-purescript-syntax
+[submodule "assets/syntaxes/Swift"]
+	path = assets/syntaxes/Swift
+	url = https://github.com/quiqueg/Swift-Sublime-Package
+[submodule "assets/syntaxes/Crystal"]
+	path = assets/syntaxes/Crystal
+	url = https://github.com/crystal-lang-tools/sublime-crystal.git
+[submodule "assets/syntaxes/PowerShell"]
+	path = assets/syntaxes/PowerShell
+	url = https://github.com/PowerShell/EditorSyntax

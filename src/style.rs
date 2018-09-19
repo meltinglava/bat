@@ -54,7 +54,8 @@ impl FromStr for OutputComponent {
             "header" => Ok(OutputComponent::Header),
             "numbers" => Ok(OutputComponent::Numbers),
             "full" => Ok(OutputComponent::Full),
-            "plain" | _ => Ok(OutputComponent::Plain),
+            "plain" => Ok(OutputComponent::Plain),
+            _ => Err(format!("Unknown style '{}'", s).into()),
         }
     }
 }
@@ -77,5 +78,9 @@ impl OutputComponents {
 
     pub fn numbers(&self) -> bool {
         self.0.contains(&OutputComponent::Numbers)
+    }
+
+    pub fn plain(&self) -> bool {
+        self.0.iter().all(|c| c == &OutputComponent::Plain)
     }
 }

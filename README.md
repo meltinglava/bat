@@ -83,7 +83,7 @@ bat f - g  # output 'f', then stdin, then 'g'.
 Download the latest `.deb` package from the [release page](https://github.com/sharkdp/bat/releases)
 and install it via:
 ``` bash
-sudo dpkg -i bat_0.6.1_amd64.deb  # adapt version number and architecture
+sudo dpkg -i bat_0.7.0_amd64.deb  # adapt version number and architecture
 ```
 
 ### On Arch Linux
@@ -117,6 +117,34 @@ cd /usr/ports/textproc/bat
 make install
 ```
 
+### Via Ansible
+
+You can install `bat` with [Ansible](https://www.ansible.com/):
+
+```bash
+# Install role on local machine
+ansible-galaxy install aeimer.install_bat
+```
+
+```yaml
+---
+# Playbook to install bat
+- host: all
+  roles:
+    - aeimer.install_bat
+```
+
+- [Ansible Galaxy](https://galaxy.ansible.com/aeimer/install_bat)
+- [Github](https://github.com/aeimer/ansible-install-bat)
+
+This should work with the following distributions:
+- Debian/Ubuntu
+- ARM (eg. Raspberry PI)
+- Arch Linux
+- Void Linux
+- FreeBSD
+- MacOS
+
 ### On macOS
 
 You can install `bat` with [Homebrew](http://braumeister.org/formula/bat):
@@ -134,6 +162,8 @@ or install it with [scoop](https://scoop.sh/):
 scoop install bat
 ```
 
+[See below](#using-bat-on-windows) for notes.
+
 ### From binaries
 
 Check out the [Release page](https://github.com/sharkdp/bat/releases) for
@@ -148,8 +178,8 @@ higher. You can then use `cargo` to build everything:
 cargo install bat
 ```
 
-On macOS, you might have to install `cmake` (`brew install cmake`) in order for
-some dependencies to be built.
+You may have to install `cmake` and the `libz` development package
+(`libz-dev` or `libz-devel`) in order for the build to succeed.
 
 ## Customization
 
@@ -165,7 +195,8 @@ make the change permanent.
 
 You can use the `--style` option to control the appearance of `bat`s output.
 You can use `--style=numbers,changes`, for example, to show only Git changes
-and line numbers but no grid and no file header.
+and line numbers but no grid and no file header. Use the `BAT_STYLE` environment
+variable to make these changes permanent.
 
 ### Adding new syntaxes / language definitions
 
@@ -233,6 +264,48 @@ script as a wrapper, for example:
 #!/bin/bash
 
 less --tabs 4 -RF "$@"
+```
+
+## Using `bat` on Windows
+
+`bat` mostly works out-of-the-box on Windows, but a few features may need extra configuration.
+
+### Paging
+
+Windows only includes a very limited pager in the form of `more`. You can download a Windows binary
+for `less` [from its homepage](http://www.greenwoodsoftware.com/less/download.html) or [through
+Chocolatey](https://chocolatey.org/packages/Less). To use it, place the binary in a directory in
+your `PATH` or [define an environment variable](#using-a-different-pager).
+
+### Colours
+
+Windows 10 natively supports colours in both `conhost.exe` (Command Prompt) and PowerShell since
+[v1511](https://en.wikipedia.org/wiki/Windows_10_version_history#Version_1511_(November_Update)), as
+well as in newer versions of bash. On earlier versions of Windows, you can use
+[Cmder](http://cmder.net/), which includes [ConEmu](https://conemu.github.io/).
+
+**Note:** The Git and MSYS versions of `less` do not correctly interpret colours on Windows. If you
+don’t have any other pagers installed, you can disable paging entirely by passing `--paging=never`
+or by setting `BAT_PAGER` to an empty string.
+
+### Cygwin
+
+`bat` on Windows does not natively support Cygwin's unix-style paths (`/cygdrive/*`). When passed an absolute cygwin path as an argument, `bat` will encounter the following error: `The system cannot find the path specified. (os error 3)` 
+
+This can be solved by creating a wrapper or adding the following function to your `.bash_profile` file:
+
+```shell
+bat() {
+    local index
+    local args=("$@")
+    for index in $(seq 0 ${#args[@]}) ; do
+        case "${args[index]}" in
+        -*) continue;;
+        *)  [ -e "${args[index]}" ] && args[index]="$(cygpath --windows "${args[index]}")";;
+        esac
+    done
+    command bat "${args[@]}"
+}
 ```
 
 ## Troubleshooting
